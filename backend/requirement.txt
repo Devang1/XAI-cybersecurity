@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+numpy
+scikit-learn
+shap
+lime
+dice-ml
+python-dotenv
+groq
+androguard
