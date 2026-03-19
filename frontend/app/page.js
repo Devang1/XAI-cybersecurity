@@ -51,7 +51,7 @@ export default function Home() {
       setResult(null);
       setUploadResult(null); // Clear other results
       
-      const res = await axios.post("http://127.0.0.1:8000/analyze-sample", {
+      const res = await axios.post("https://xai-cybersecurity-backend.onrender.com/analyze-sample", {
         sample_index: selected
       });
       setResult(res.data);
@@ -76,7 +76,7 @@ export default function Home() {
       formData.append("file", file);
 
       const res = await axios.post(
-        "http://localhost:8000/analyze-apk",
+        "https://xai-cybersecurity-backend.onrender.com/analyze-apk",
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
