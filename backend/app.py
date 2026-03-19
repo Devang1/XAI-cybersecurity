@@ -1,5 +1,5 @@
 # ================================
-# ANDROID MALWARE BACKEND (DEPLOY READY)
+# ANDROID MALWARE BACKEND (FINAL DEPLOY FIXED)
 # ================================
 
 import pandas as pd
@@ -10,7 +10,7 @@ import pickle
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
@@ -24,21 +24,30 @@ load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ================================
-# FASTAPI
+# FASTAPI INIT
 # ================================
 
 app = FastAPI()
 
+# ✅ FIXED CORS (PRODUCTION READY)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://xai-cybersecurity.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ✅ IMPORTANT: HANDLE PREFLIGHT (FIXES FILE UPLOAD CORS)
+@app.options("/{full_path:path}")
+async def options_handler(request: Request):
+    return {}
+
 # ================================
-# LOAD FILES (NO DOWNLOAD)
+# LOAD FILES
 # ================================
 
 DATA_PATH = "data/drebin.csv"
@@ -56,7 +65,7 @@ X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
 mapping = pd.read_csv(MAPPING_PATH)
 
 # ================================
-# LOAD MODEL (NO TRAINING)
+# LOAD MODEL
 # ================================
 
 rf_model = pickle.load(open(MODEL_PATH, "rb"))
@@ -79,7 +88,7 @@ lime_explainer = lime.lime_tabular.LimeTabularExplainer(
 # REQUEST MODEL
 # ================================
 
-class Request(BaseModel):
+class RequestBody(BaseModel):
     sample_index: int
 
 # ================================
@@ -127,7 +136,6 @@ def analyze_instance(X_sample, use_explain=True):
     lime_data = []
 
     if use_explain:
-        # SHAP
         shap_values = explainer.shap_values(X_sample, check_additivity=False)
 
         if isinstance(shap_values, list):
@@ -143,7 +151,6 @@ def analyze_instance(X_sample, use_explain=True):
             for i in idxs
         ]
 
-        # LIME
         lime_exp = lime_explainer.explain_instance(
             X_sample.values[0],
             rf_model.predict_proba,
@@ -155,7 +162,6 @@ def analyze_instance(X_sample, use_explain=True):
             for f, w in lime_exp.as_list()
         ]
 
-    # LLM
     top_features = [i["feature"] for i in shap_data]
     top_features_desc = mapping[mapping.iloc[:, 0].isin(top_features)]
 
@@ -209,12 +215,16 @@ def extract_features_from_apk(file_path):
 # ================================
 
 @app.post("/analyze-sample")
-def analyze(req: Request):
+def analyze(req: RequestBody):
     X_sample = X.loc[[req.sample_index]]
     return analyze_instance(X_sample, use_explain=True)
 
 @app.post("/analyze-apk")
 async def analyze_apk(file: UploadFile = File(...)):
+
+    # ✅ Validate file type
+    if not file.filename.endswith((".apk", ".apkm")):
+        return {"error": "Only APK/APKM files allowed"}
 
     file_path = f"temp_{file.filename}"
 
@@ -223,10 +233,13 @@ async def analyze_apk(file: UploadFile = File(...)):
 
     X_sample = extract_features_from_apk(file_path)
 
+    # ✅ Cleanup temp file
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
     if X_sample is None:
         return {"error": "Invalid APK"}
 
-    # 🚀 faster (no shap/lime for apk)
     return analyze_instance(X_sample, use_explain=False)
 
 @app.get("/")
